@@ -5,6 +5,9 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
+import android.text.Editable;
+import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -35,6 +38,11 @@ public class SearchActivity extends Activity {
     private GridView gvResult;
     private ArrayList<ImageResult> imageResultArray;
     private ImageResultsAdapter aImageResults;
+    private Button loadMoreButton;
+
+    private int nextPage = 1;
+    private int nextStart = 0;
+    private static final int MAX_PAGES = 8;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,6 +57,23 @@ public class SearchActivity extends Activity {
 
     private void setUpViews() {
         etQuery = (EditText)findViewById(R.id.etQuery);
+        etQuery.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                // disable load more button when text changes
+                loadMoreButton.setEnabled(false);
+            }
+        });
         gvResult = (GridView)findViewById(R.id.gvResult);
         gvResult.setOnItemClickListener( new AdapterView.OnItemClickListener() {
             @Override
@@ -60,21 +85,21 @@ public class SearchActivity extends Activity {
                 startActivity(i);
             }
         });
+        loadMoreButton = (Button) findViewById(R.id.btnLoadMore);
+        loadMoreButton.setEnabled(false);
     }
 
-    private String formQuery(String query){
+    private String formQuery(String query, boolean loadMore){
         String result = null;
-        result = "http://ajax.googleapis.com/ajax/services/search/images?v=1.0&q="+query+"&rsz=8&imgsz="+getPrefrenceValue("image_size_key","icon")+"&imgcolor="+getPrefrenceValue("color_filter_key","black")+"&imgtype="+getPrefrenceValue("image_type_key","face")+"&as_sitesearch="+getPrefrenceValue("site_filter_key","");
-
-
+        result = "http://ajax.googleapis.com/ajax/services/search/images?v=1.0&q="+query+"&rsz=8&imgsz="+getPrefrenceValue("image_size_key","icon")+"&imgcolor="+getPrefrenceValue("color_filter_key","black")+"&imgtype="+getPrefrenceValue("image_type_key","face")+"&as_sitesearch="+getPrefrenceValue("site_filter_key","")+"&start="+nextStart;
         return result;
     }
 
-    private void executeQuery(){
+    private void executeQuery(final boolean loadMore){
         Button btnSearch = (Button)findViewById(R.id.btnSearch);
         String query = etQuery.getText().toString();
 
-        String searchUrl = formQuery(query);
+        String searchUrl = formQuery(query, loadMore);
         AsyncHttpClient client = new AsyncHttpClient();
         client.get(searchUrl, new JsonHttpResponseHandler(){
             @Override
@@ -82,13 +107,28 @@ public class SearchActivity extends Activity {
                 //System.out.println(response.toString());
 //                Log.i("aman", response.toString());
                 JSONArray resultArray = null;
+                JSONObject responseData = null;
+                JSONObject cursorObject = null;
                 try {
-                    resultArray = response.getJSONObject("responseData").getJSONArray("results");
-                    imageResultArray.clear();
+                    responseData = response.getJSONObject("responseData");
+                    resultArray = responseData.getJSONArray("results");
+                    cursorObject = responseData.getJSONObject("cursor");
+                    JSONArray pages = cursorObject.getJSONArray("pages");
+                    if (nextPage < MAX_PAGES && nextPage < pages.length()) {
+                        nextStart = pages.getJSONObject(nextPage).getInt("start");
+                        nextPage++;
+                        loadMoreButton.setEnabled(true);
+                    } else {
+                        loadMoreButton.setEnabled(false);
+                    }
+                    if (!loadMore) {
+                        imageResultArray.clear();
+                    }
                     aImageResults.addAll(ImageResult.fromArrayList(resultArray));
                 } catch (JSONException e) {
                     e.printStackTrace();
                 }
+
 //                Log.i("DEBUG",imageResultArray.toString());
             }
 
@@ -100,8 +140,13 @@ public class SearchActivity extends Activity {
     }
 
     public void onSearchImage(View view){
-        executeQuery();
+        executeQuery(false);
     }
+
+    public void onLoadMore(View view) {
+        executeQuery(true);
+    }
+
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         // Inflate the menu; this adds items to the action bar if it is present.
@@ -113,7 +158,10 @@ public class SearchActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if(requestCode==0){
-            executeQuery();
+            // reset query after settings changed
+            nextPage = 1;
+            nextStart = 0;
+            executeQuery(false);
         }
     }
 
