@@ -72,6 +72,8 @@ public class SearchActivity extends Activity {
             public void afterTextChanged(Editable s) {
                 // disable load more button when text changes
                 loadMoreButton.setEnabled(false);
+                nextPage = 1;
+                nextStart = 0;
             }
         });
         gvResult = (GridView)findViewById(R.id.gvResult);
